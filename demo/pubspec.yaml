@@ -1,4 +1,4 @@
-name: flutter_chat_app
+name: flutter_chat_app # Tên này là từ file gốc của bạn
 description: A cross-platform chat application built with Flutter
 
 publish_to: 'none'
@@ -13,7 +13,21 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # State management
+  # --- CÁC GÓI P2P CỐT LÕI MỚI ---
+  flutter_webrtc: ^1.2.0 # (Đã di chuyển từ dev_dependencies)
+  multicast_dns: ^0.3.2  # (MỚI) Tự động tìm peer trong mạng LAN
+  qr_flutter: ^4.1.0       # (MỚI) Hiển thị mã QR
+  qr_code_scanner: ^1.0.1  # (MỚI) Quét mã QR (Nhớ vá lỗi namespace)
+
+  # --- CÁC GÓI ĐỊNH DANH & BẢO MẬT ---
+  flutter_secure_storage: ^9.0.0 # (Cập nhật bản ổn định)
+  pointycastle: ^3.7.3           # (Giữ nguyên)
+  encrypt: ^5.0.3                # (Cập nhật)
+  basic_utils: ^5.7.0            # (Giữ nguyên)
+  crypto: ^3.0.3                 # (Giữ nguyên)
+
+  # --- CÁC GÓI CHỨC NĂNG CÒN LẠI ---
+  # Quản lý state
   provider: ^6.1.1
   dotted_border: ^2.1.0
 
@@ -23,52 +37,39 @@ dependencies:
   path: ^1.8.3
   path_provider: ^2.1.1
 
-  # Network & WebSocket
-  http: ^1.1.0
-  web_socket_channel: ^3.0.3
+  # Network
+  web_socket_channel: ^3.0.3 # Giữ lại cho Signaling Server
 
-  # Utilities
-  crypto: ^3.0.3
+  # Tiện ích
   intl: ^0.20.2
-  basic_utils: ^5.7.0
-  flutter_secure_storage: ^10.0.0-beta.4
-  
-  # Encryption
-  encrypt: ^5.0.1
-  pointycastle: ^3.7.3
-
-  # File picking (for file attachments)
   file_picker: ^10.3.3
+  open_filex: ^4.3.4 
+  collection: ^1.18.0
+
+  # Video (giữ lại cho streaming P2P)
+  video_player: ^2.8.1    
+  video_player_win: ^3.2.0
   
   # UI Icons
   cupertino_icons: ^1.0.6
 
-  #open filex
-  open_filex: ^4.3.4 
-
-  video_player: ^2.8.1    
-  video_player_win: ^3.2.0   # Thư viện chính để phát video
-  shelf: ^1.4.1              # Để tạo máy chủ HTTP cục bộ
-  shelf_router: ^1.1.4       # Hỗ trợ định tuyến cho shelf
-  collection: ^1.18.0
+  # --- ĐÃ XÓA CÁC GÓI SAU ---
+  shelf: ^1.4.1
+  shelf_router: ^1.1.4 
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  flutter_webrtc: 1.2.0 #
+  # flutter_webrtc: 1.2.0 # (ĐÃ DI CHUYỂN LÊN 'dependencies')
+
 flutter:
   uses-material-design: true
 
-  # Assets can be added here if needed
   # assets:
   #   - images/
-  #   - icons/
 
-  # Fonts can be configured here
   # fonts:
   #   - family: CustomFont
   #     fonts:
   #       - asset: fonts/CustomFont-Regular.ttf
-  #       - asset: fonts/CustomFont-Bold.ttf
-  #         weight: 700

@@ -1,187 +1,130 @@
-// lib/screens/main_layout.dart
+// demo/lib/screens/main_layout.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/auth_provider.dart';
-import '../providers/websocket_provider.dart';
-import '../config/app_colors.dart';
-import '../services/db_service.dart';
-import '../providers/navigation_provider.dart';
 
-// Import các tab
-import 'tabs/home_tab.dart';
-import 'tabs/groups_tab.dart';
-import 'tabs/chats_tab.dart';
-// ---- THÊM IMPORT MỚI ----
-import 'tabs/friends_tab.dart';
-// -------------------------
-import 'tabs/profile_tab.dart';
+import 'package:demo/config/app_colors.dart';
+import 'package:demo/providers/navigation_provider.dart'; // Giữ lại
+import 'package:demo/screens/tabs/home_tab.dart'; // Giữ lại
+import 'package:demo/screens/tabs/friends_tab.dart'; // Đã sửa
+import 'package:demo/screens/tabs/groups_tab.dart'; // Giữ lại
+import 'package:demo/screens/tabs/profile_tab.dart'; // Đã sửa
+import 'package:demo/screens/file_manager_screen.dart'; // Giữ lại
+import 'package:demo/screens/upload_file_screen.dart'; // Giữ lại
+
+// --- CÁC IMPORT MỚI ---
+import 'package:demo/services/identity_service.dart';
+import 'package:demo/services/websocket_service.dart';
+// --- KẾT THÚC IMPORT MỚI ---
 
 class MainLayout extends StatefulWidget {
-  const MainLayout({Key? key}) : super(key: key);
+  const MainLayout({super.key});
 
   @override
-  _MainLayoutState createState() => _MainLayoutState();
+  State<MainLayout> createState() => _MainLayoutState();
 }
 
 class _MainLayoutState extends State<MainLayout> {
+  late PageController _pageController;
+  int _currentIndex = 0;
+
+  // Danh sách các tab
+  final List<Widget> _tabs = [
+    const HomeTab(),
+    const FriendsTab(), // Tab này đã được sửa
+    const GroupsTab(),
+    const ProfileTab(), // Tab này đã được sửa
+  ];
+
   @override
   void initState() {
     super.initState();
+    _pageController = PageController();
+
+    // --- CODE MỚI: KẾT NỐI ĐẾN SIGNALING SERVER ---
+    // Chúng ta dùng addPostFrameCallback để đảm bảo context đã sẵn sàng
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initializeConnection();
-      _loadAllMessages();
-    });
-  }
+      final identityService = context.read<IdentityService>();
+      final wsService = context.read<WebSocketService>();
 
-  void _initializeConnection() async {
-    // (Giữ nguyên)
-    final authProvider = context.read<AuthProvider>();
-    final wsProvider = context.read<WebSocketProvider>();
+      // Chỉ kết nối khi đã có định danh và chưa kết nối
+      if (identityService.myPeerId != null && !wsService.isConnected) {
+        // ⚠️ THAY 'YOUR_IP' BẰNG ĐỊA CHỈ IP MẠNG LAN CỦA MÁY CHẠY SERVER
+        // Ví dụ: 'ws://192.168.1.10:8080'
+        const signalingUrl = 'ws://YOUR_IP:8080';
 
-    if (authProvider.user != null && !wsProvider.isConnected) {
-      print("MainLayout: Connecting to WebSocket...");
-      await wsProvider.connect(authProvider.user!);
-    }
-  }
-
-  Future<void> _loadAllMessages() async {
-    // (Giữ nguyên)
-    print("MainLayout: Loading all messages from DB...");
-    try {
-      final messages = await DBService.getRecentMessages(500);
-      if (mounted) {
-        context.read<WebSocketProvider>().loadMessages(messages);
-        print("MainLayout: Loaded ${messages.length} messages into providers.");
+        print('Đang kết nối đến Signaling Server tại $signalingUrl');
+        wsService.connect(
+          signalingUrl,
+          identityService.myPeerId!,
+        );
       }
-    } catch (e) {
-      print('Error loading all messages in MainLayout: $e');
-    }
+    });
+    // --- KẾT THÚC CODE MỚI ---
   }
 
-  // ---- SỬA: Thêm FriendsTab vào danh sách ----
-  static final List<Widget> _widgetOptions = <Widget>[
-    const HomeTab(),
-    const GroupsTab(),
-    const ChatsTab(),
-    const FriendsTab(), // <-- THÊM MỚI
-    const ProfileTab(),
-  ];
-  // ------------------------------------------
+  @override
+  void dispose() {
+    _pageController.dispose();
+    // Tùy chọn: ngắt kết nối WebSocket khi layout bị hủy
+    // context.read<WebSocketService>().disconnect();
+    super.dispose();
+  }
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
+    _pageController.jumpToPage(index);
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Lắng nghe provider
-    final navProvider = context.watch<NavigationProvider>();
-    final int currentIndex = navProvider.currentIndex;
-
     return Scaffold(
-      body: IndexedStack(
-        index: currentIndex, // <-- Dùng index từ provider
-        children: _widgetOptions,
+      body: PageView(
+        controller: _pageController,
+        onPageChanged: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        children: _tabs,
       ),
-      bottomNavigationBar:
-          _buildBottomNavBar(navProvider, currentIndex), // <-- Truyền vào
-    );
-  }
-
-  // ---- SỬA: Thêm BottomNavigationBarItem mới ----
-  Widget _buildBottomNavBar(NavigationProvider navProvider, int currentIndex) {
-    return Container(
-      decoration: const BoxDecoration(
-        border: Border(
-          top: BorderSide(color: Color(0xFFE1EFE9), width: 1.0),
-        ),
-      ),
-      child: BottomNavigationBar(
-        items: <BottomNavigationBarItem>[
-          _buildNavItem(
-            icon: Icons.home_outlined,
-            activeIcon: Icons.home,
+      bottomNavigationBar: BottomNavigationBar(
+        backgroundColor: AppColors.background,
+        type: BottomNavigationBarType.fixed,
+        currentIndex: _currentIndex,
+        onTap: _onItemTapped,
+        selectedItemColor: AppColors.primary,
+        unselectedItemColor: AppColors.textFaded,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home),
             label: 'Trang chủ',
-            index: 0,
-            currentIndex: currentIndex,
           ),
-          _buildNavItem(
-            icon: Icons.folder_outlined,
-            activeIcon: Icons.folder,
-            label: 'Nhóm',
-            index: 1,
-            currentIndex: currentIndex,
-          ),
-          _buildNavItem(
-            icon: Icons.chat_bubble_outline,
-            activeIcon: Icons.chat_bubble,
-            label: 'Trò chuyện',
-            index: 2,
-            currentIndex: currentIndex,
-          ),
-          // ---- THÊM MỤC MỚI ----
-          _buildNavItem(
-            icon: Icons.people_outline,
-            activeIcon: Icons.people,
+          BottomNavigationBarItem(
+            icon: Icon(Icons.people),
             label: 'Bạn bè',
-            index: 3,
-            currentIndex: currentIndex,
           ),
-          // -----------------------
-          _buildNavItem(
-            icon: Icons.person_outline,
-            activeIcon: Icons.person,
+          BottomNavigationBarItem(
+            icon: Icon(Icons.group_work),
+            label: 'Nhóm',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person),
             label: 'Hồ sơ',
-            index: 4, // <-- SỬA INDEX THÀNH 4
-            currentIndex: currentIndex,
           ),
         ],
-        currentIndex: currentIndex,
-        onTap: (index) => navProvider.changeTab(index), // <-- Gọi provider
-        backgroundColor: AppColors.greenLight,
-        type: BottomNavigationBarType.fixed,
-        showSelectedLabels: true,
-        showUnselectedLabels: true,
-        selectedFontSize: 12,
-        unselectedFontSize: 12,
-        selectedItemColor: AppColors.primaryDark,
-        unselectedItemColor: AppColors.greenText,
       ),
-    );
-  }
-  // ---------------------------------------------
-
-  BottomNavigationBarItem _buildNavItem({
-    required IconData icon,
-    required IconData activeIcon,
-    required String label,
-    required int index,
-    required int currentIndex,
-  }) {
-    bool isActive = currentIndex == index;
-
-    Widget iconWidget = Container(
-      width: 44,
-      height: 36,
-      decoration: BoxDecoration(
-        gradient: isActive ? AppColors.primaryGradient : null,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: isActive
-            ? [
-                BoxShadow(
-                  color: AppColors.primary.withOpacity(0.25),
-                  blurRadius: 18,
-                  offset: const Offset(0, 6),
-                )
-              ]
-            : [],
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const UploadFileScreen()),
+          );
+        },
+        backgroundColor: AppColors.primary,
+        child: const Icon(Icons.upload_file, color: Colors.white),
       ),
-      child: Icon(
-        isActive ? activeIcon : icon,
-        color: isActive ? Colors.white : AppColors.greenText,
-        size: 22,
-      ),
-    );
-
-    return BottomNavigationBarItem(
-      icon: iconWidget,
-      label: label,
     );
   }
 }

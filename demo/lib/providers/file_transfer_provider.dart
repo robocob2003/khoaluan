@@ -1,5 +1,4 @@
 // lib/providers/file_transfer_provider.dart
-
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
@@ -9,15 +8,20 @@ import 'package:open_filex/open_filex.dart';
 import 'package:pointycastle/export.dart';
 import 'package:synchronized/synchronized.dart';
 import 'package:collection/collection.dart';
+
+// --- THAY ĐỔI IMPORT ---
+import '../services/identity_service.dart';
+import '../services/p2p_service.dart'; // Sẽ cần cho P2P
 import '../models/file_transfer.dart';
 import '../models/message.dart';
 import '../models/user.dart';
 import '../services/db_service.dart';
 import '../services/file_service.dart';
-import '../services/rsa_service.dart';
+import '../services/rsa_service.dart'; // Sẽ cần sửa file RSA
 import '../services/websocket_service.dart';
-import '../services/streaming_service.dart';
-import 'auth_provider.dart';
+// import '../services/streaming_service.dart'; // P2P WebRTC sẽ lo
+// import 'auth_provider.dart'; // ĐÃ XÓA
+// --- KẾT THÚC THAY ĐỔI ---
 
 class FileTransferProvider with ChangeNotifier {
   final Map<String, double> _uploadProgress = {};
@@ -25,23 +29,28 @@ class FileTransferProvider with ChangeNotifier {
   final Map<String, FileStatus> _fileStatuses = {};
   final List<FileMetadata> _sentFiles = [];
   final List<FileMetadata> _receivedFiles = [];
-  late WebSocketService _webSocketService;
-  final Map<String, StreamingManager> _streamingManagers = {};
+
+  // --- THAY ĐỔI ---
+  late WebSocketService _webSocketService; // Vẫn cần cho Signaling
+  P2PService? _p2pService; // Dùng cho truyền P2P
+  IdentityService? _identityService;
+  // --- KẾT THÚC THAY ĐỔI ---
+
   final Set<String> _activeTransfers = {};
   final Lock _dbLock = Lock();
-  AuthProvider? _authProvider;
 
   final Map<String, Map<String, Set<int>>> _chunkAvailabilityMap = {};
-
   final Map<String, List<String>> _fileTags = {};
   List<String> getTagsForFile(String fileId) => _fileTags[fileId] ?? [];
 
   bool _isLoading = false;
   String? _error;
 
-  void setAuthProvider(AuthProvider authProvider) {
-    _authProvider = authProvider;
+  // --- THAY ĐỔI: setAuthProvider -> setIdentityService ---
+  void setIdentityService(IdentityService identityService) {
+    _identityService = identityService;
   }
+  // --- KẾT THÚC THAY ĐỔI ---
 
   Lock get dbLock => _dbLock;
 
@@ -54,31 +63,17 @@ class FileTransferProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
-  void setWebSocketService(WebSocketService service) {
-    _webSocketService = service;
-    _webSocketService.onRequestSpecificChunk = _handleChunkRequest;
+  // --- CẬP NHẬT: Thêm P2PService ---
+  void setServices(WebSocketService wsService, P2PService p2pService) {
+    _webSocketService = wsService;
+    _p2pService = p2pService;
 
-    _webSocketService.onAnnounceChunkReceived =
-        (fromUsername, fileId, chunkIndex) {
-      if (fromUsername == _authProvider?.user?.username) return;
-      if (!_chunkAvailabilityMap.containsKey(fileId)) {
-        _chunkAvailabilityMap[fileId] = {};
-      }
-      if (!_chunkAvailabilityMap[fileId]!.containsKey(fromUsername)) {
-        _chunkAvailabilityMap[fileId]![fromUsername] = <int>{};
-      }
-      _chunkAvailabilityMap[fileId]![fromUsername]!.add(chunkIndex);
-      print(
-          '🗺️ [Map] Peer $fromUsername now has chunk $chunkIndex for file $fileId.');
-    };
-
-    _webSocketService.onFileTagsReceived = (fileId, tags, groupId) {
-      final tagList = tags.map((t) => t.toString()).toList();
-      handleIncomingFileTags(fileId, tagList); // <-- ĐÃ SỬA
-    };
+    // TODO: Lắng nghe P2PService để nhận file/chunk
+    // _p2pService.onFileReceived = (senderId, metadata) { ... }
+    // _p2pService.onChunkReceived = (senderId, chunk) { ... }
   }
+  // --- KẾT THÚC CẬP NHẬT ---
 
-  // ---- HÀM ĐÃ SỬA (BỎ DẤU GẠCH DƯỚI) ----
   Future<void> handleIncomingFileTags(String fileId, List<String> tags) async {
     try {
       await DBService.addFileTags(fileId, tags);
@@ -89,80 +84,41 @@ class FileTransferProvider with ChangeNotifier {
       print("Lỗi lưu file tags: $e");
     }
   }
-  // ------------------------------------
 
+  // --- THAY ĐỔI: int groupId -> String groupId ---
   Future<void> sendFileTags(
-      String fileId, int groupId, List<String> tags) async {
+      String fileId, String groupId, List<String> tags) async {
     if (tags.isEmpty) return;
     await DBService.addFileTags(fileId, tags);
     _fileTags[fileId] = tags;
-    _webSocketService.sendFileTags(fileId, tags, groupId);
+    // TODO: Gửi P2P
+    // _p2pService.broadcastToGroup(groupId, {'type': 'file_tags', 'fileId': fileId, 'tags': tags});
+    print("P2P: Gửi file tags (chưa implement)");
     notifyListeners();
   }
 
-  // (Các hàm còn lại giữ nguyên)
+  // (Hàm _handleChunkRequest đã bị xóa vì P2PService lo)
 
-  Future<void> _handleChunkRequest(
-      String fromUsername, String fileId, int chunkIndex) async {
-    // ... (Giữ nguyên)
-    print(
-        '📬 [SEEDER] Received request for chunk $chunkIndex of file $fileId from $fromUsername.');
-    final privateKey = _authProvider?.privateKey;
-    if (privateKey == null) {
-      print('❌ [SEEDER] Error: Private key not available.');
-      return;
-    }
-    try {
-      final chunkInfo = await _dbLock.synchronized(
-          () async => await DBService.getSingleFileChunk(fileId, chunkIndex));
-
-      if (chunkInfo == null || chunkInfo.chunkPath == null) {
-        print('⚠️ [SEEDER] Warning: Chunk $chunkIndex not found locally.');
-        return;
-      }
-      final chunkData = await FileService.readChunk(chunkInfo);
-      if (chunkData == null) {
-        print('❌ [SEEDER] Error: Failed to read chunk data.');
-        return;
-      }
-      final signature = RSAService.signData(chunkData, privateKey);
-      final metadata = await DBService.getFileTransfer(fileId);
-      _webSocketService.sendFileChunk(
-        fileId: fileId,
-        chunkIndex: chunkIndex,
-        chunkData: chunkData,
-        recipient: fromUsername,
-        totalChunks: metadata?.totalChunks ?? 0,
-        checksum: chunkInfo.checksum,
-        signature: signature,
-      );
-      print('✅ [SEEDER] Sent chunk $chunkIndex to $fromUsername.');
-    } catch (e) {
-      print('💥 [SEEDER] Error handling chunk request: $e');
-    }
-  }
-
+  // --- THAY ĐỔI: UserModel -> String (PeerId) ---
   Future<Message?> processIncomingFileMetadata(
-      FileMetadata metadata, UserModel currentUser, UserModel sender) async {
-    // ... (Giữ nguyên)
+      FileMetadata metadata, String senderPeerId) async {
     return _dbLock.synchronized(() async {
-      print('🔒 [RECEIVER] Acquiring lock for metadata: ${metadata.fileName}');
+      print('🔒 [RECEIVER] Nhận metadata: ${metadata.fileName}');
 
-      int? receiverId = metadata.receiverId;
+      String? receiverId = metadata.receiverId;
       if (metadata.groupId != null) {
-        receiverId = currentUser.id;
+        receiverId = _identityService?.myPeerId;
       }
 
-      final senderUsername = _authProvider?.availableUsers
-              .firstWhereOrNull((u) => u.id == metadata.senderId)
-              ?.username ??
-          'Unknown';
+      final sender = await DBService.getUserById(senderPeerId);
+      final senderUsername = sender?.username ??
+          'Peer...${senderPeerId.substring(senderPeerId.length - 6)}';
 
       final fileMessage = Message(
         content: 'Đã nhận tệp: ${metadata.fileName}',
-        senderId: metadata.senderId,
-        receiverId: receiverId,
-        groupId: metadata.groupId,
+        senderId: metadata.senderId, // Đã là String
+        receiverId: receiverId, // Đã là String
+        groupId: metadata.groupId, // Đã là String
         timestamp: metadata.timestamp,
         type: MessageType.file,
         fileId: metadata.id,
@@ -176,11 +132,7 @@ class FileTransferProvider with ChangeNotifier {
 
         await DBService.saveIncomingFileTransferAndMessage(
             metadataToSave, fileMessage);
-        print(
-            '✅ [RECEIVER] Attempted save for metadata/message: ${metadata.fileName}');
-
-        _webSocketService.joinFileRoom(metadata.id);
-        print('🚪 [P2P] Joined file room: ${metadata.id}');
+        print('✅ [RECEIVER] Đã lưu metadata: ${metadata.fileName}');
 
         if (metadata.groupId == null) {
           final existing =
@@ -192,80 +144,18 @@ class FileTransferProvider with ChangeNotifier {
         notifyListeners();
         return fileMessage;
       } catch (e) {
-        print("💥 [RECEIVER] Error in processIncomingFileMetadata: $e");
+        print("💥 [RECEIVER] Lỗi processIncomingFileMetadata: $e");
         _setError("Failed to process incoming file: $e");
         return null;
-      } finally {
-        print(
-            '🔑 [RECEIVER] Releasing lock after metadata: ${metadata.fileName}');
       }
     });
   }
 
-  Future<StreamingManager?> startStreamingSession(String fileId) async {
-    // ... (Giữ nguyên)
-    if (_streamingManagers.containsKey(fileId)) {
-      return _streamingManagers[fileId];
-    }
-    final metadata = await DBService.getFileTransfer(fileId);
-    if (metadata == null) {
-      _setError("Could not find metadata for streaming file $fileId");
-      return null;
-    }
+  // (Các hàm streaming sẽ được thay bằng WebRTC streaming)
 
-    _webSocketService.joinFileRoom(fileId);
-    print('🚪 [P2P] Joined file room: ${fileId}');
-
-    final manager = StreamingManager(
-      fileId: fileId,
-      totalChunks: metadata.totalChunks,
-      onChunkNeeded: (chunkIndex) async {
-        print('💡 [Provider] StreamingManager needs chunk $chunkIndex.');
-        List<String> availablePeers = [];
-
-        if (_chunkAvailabilityMap.containsKey(fileId)) {
-          _chunkAvailabilityMap[fileId]!.forEach((username, chunkIndices) {
-            if (chunkIndices.contains(chunkIndex)) {
-              availablePeers.add(username);
-            }
-          });
-        }
-
-        final owner = await DBService.getUserById(metadata.senderId);
-        if (owner != null && !availablePeers.contains(owner.username)) {
-          availablePeers.add(owner.username);
-        }
-
-        if (availablePeers.isNotEmpty) {
-          final peerToRequest = availablePeers[
-              DateTime.now().millisecond % availablePeers.length];
-          print(
-              '      -> Found ${availablePeers.length} peers. Requesting from: $peerToRequest');
-          _webSocketService.requestSpecificChunk(
-              peerToRequest, fileId, chunkIndex);
-        } else {
-          print(
-              '      -> ERROR: No peers found (not even owner). Cannot request chunk.');
-        }
-      },
-      onChunkShouldBeDeleted: (chunkIndex) async {
-        await FileService.deleteSingleChunk(fileId, chunkIndex);
-      },
-    );
-    _streamingManagers[fileId] = manager;
-    return manager;
-  }
-
-  void updateStreamingPlaybackPosition(String fileId, int currentChunkIndex) {
-    // ... (Giữ nguyên)
-    final manager = _streamingManagers[fileId];
-    if (manager != null) {
-      manager.updatePlaybackPosition(currentChunkIndex);
-    }
-  }
-
-  Future<void> loadFileHistory(int userId) async {
-    // ... (Giữ nguyên)
+  // --- THAY ĐỔI: int userId -> String userId ---
+  Future<void> loadFileHistory(String userId) async {
+    if (userId.isEmpty) return;
     _setLoading(true);
     try {
       final sent = await DBService.getSentFiles(userId);
@@ -285,26 +175,31 @@ class FileTransferProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<FileMetadata?> sendFile(String filePath, String recipientUsername,
-      int senderId, int receiverId) async {
-    // ... (Giữ nguyên)
+  // --- THAY ĐỔI: int -> String, và dùng P2PService ---
+  Future<FileMetadata?> sendFile(String filePath, String targetPeerId) async {
     FileMetadata? metadata;
     try {
+      final senderId = _identityService?.myPeerId;
+      if (senderId == null) throw Exception('Chưa có định danh (Identity)');
+
       _setError(null);
       metadata = await FileService.prepareFileForUpload(
-          filePath: filePath, senderId: senderId, receiverId: receiverId);
+          filePath: filePath, senderId: senderId, receiverId: targetPeerId);
       if (metadata == null) throw Exception('Failed to prepare file');
 
       final chunks = await FileService.splitFileIntoChunks(
-          metadata, recipientUsername,
-          isEncrypted: false);
+          metadata, targetPeerId,
+          isEncrypted: false); // Tương lai: dùng E2E
+
       _sentFiles.insert(0, metadata);
       _fileStatuses[metadata.id] = FileStatus.pending;
       _uploadProgress[metadata.id] = 0.0;
       await DBService.saveNewFileTransfer(metadata, chunks);
 
-      _webSocketService.sendFileMetadata(metadata,
-          recipient: recipientUsername);
+      // GỬI P2P
+      // TODO: Gửi metadata qua P2PService
+      // _p2pService.sendMessage(targetPeerId, json.encode({'type': 'file_meta', ...metadata.toMap()}));
+      print("P2P: Gửi file metadata (chưa implement)");
     } catch (e) {
       _setError('Failed to send file metadata: $e');
       if (metadata != null) _fileStatuses[metadata.id] = FileStatus.failed;
@@ -313,28 +208,28 @@ class FileTransferProvider with ChangeNotifier {
     return metadata;
   }
 
-  // ---- HÀM ĐÃ SỬA (Sử dụng tham số có tên) ----
+  // --- THAY ĐỔI: int -> String, và dùng P2PService ---
   Future<FileMetadata?> sendFileToGroup({
     required String filePath,
-    required int groupId,
-    required int senderId,
-    bool isEncrypted = false, // <-- THÊM THAM SỐ
+    required String groupId,
+    bool isEncrypted = false,
   }) async {
     FileMetadata? metadata;
     try {
+      final senderId = _identityService?.myPeerId;
+      if (senderId == null) throw Exception('Chưa có định danh (Identity)');
+
       _setError(null);
 
       metadata = await FileService.prepareFileForUpload(
           filePath: filePath, senderId: senderId, groupId: groupId);
       if (metadata == null) throw Exception('Failed to prepare file');
 
-      // ---- TRUYỀN THAM SỐ VÀO ĐÂY ----
       final chunks = await FileService.splitFileIntoChunks(
         metadata,
         "group_$groupId",
-        isEncrypted: isEncrypted, // <-- SỬ DỤNG GIÁ TRỊ
+        isEncrypted: isEncrypted,
       );
-      // -------------------------------
 
       _sentFiles.insert(0, metadata);
       _fileStatuses[metadata.id] = FileStatus.pending;
@@ -342,12 +237,10 @@ class FileTransferProvider with ChangeNotifier {
 
       await DBService.saveNewFileTransfer(metadata, chunks);
 
-      _webSocketService.sendFileMetadata(metadata, groupId: groupId);
-
-      if (_authProvider?.privateKey != null) {
-        startSendingFileChunks(metadata.id, null, _authProvider!.privateKey!,
-            groupId: groupId);
-      }
+      // GỬI P2P (Broadcase cho nhóm)
+      // TODO: Gửi metadata qua P2PService
+      // _p2pService.broadcastToGroup(groupId, json.encode({'type': 'file_meta', ...metadata.toMap()}));
+      print("P2P: Gửi file metadata nhóm (chưa implement)");
     } catch (e) {
       _setError('Failed to send file to group: $e');
       if (metadata != null) _fileStatuses[metadata.id] = FileStatus.failed;
@@ -355,146 +248,45 @@ class FileTransferProvider with ChangeNotifier {
     notifyListeners();
     return metadata;
   }
-  // --------------------
 
-  Future<void> startSendingFileChunks(
-      String fileId, String? recipientUsername, RSAPrivateKey privateKey,
-      {int? groupId}) async {
-    // ... (Giữ nguyên)
-    if (recipientUsername == null && groupId == null) {
-      print("Error: Must provide recipient or groupId to send chunks.");
-      return;
-    }
-    if (_activeTransfers.contains(fileId)) return;
-    _activeTransfers.add(fileId);
-    try {
-      FileMetadata? metadata;
-      List<FileChunkData> chunks = [];
-      final db = await DBService.database;
-      await db.transaction((txn) async {
-        final metaRes = await txn.query('file_transfers',
-            where: 'id = ?', whereArgs: [fileId], limit: 1);
-        if (metaRes.isEmpty) throw Exception('Metadata not found');
-        metadata = FileMetadata.fromMap(metaRes.first);
-        if (metadata!.status == FileStatus.transferring)
-          throw Exception('Already transferring');
-        final chunkRes = await txn.query('file_chunks',
-            where: 'fileId = ?',
-            whereArgs: [fileId],
-            orderBy: 'chunkIndex ASC');
-        if (chunkRes.isEmpty) throw Exception('No chunks found');
-        chunks = chunkRes.map((c) => FileChunkData.fromMap(c)).toList();
-        await txn.update(
-            'file_transfers', {'status': FileStatus.transferring.toString()},
-            where: 'id = ?', whereArgs: [fileId]);
-      });
-      _fileStatuses[fileId] = FileStatus.transferring;
-      _uploadProgress[fileId] = 0.0;
-      notifyListeners();
-      for (int i = 0; i < chunks.length; i++) {
-        final chunkData = await FileService.readChunk(chunks[i]);
-        if (chunkData == null) throw Exception('Failed to read chunk');
-        final signature = RSAService.signData(chunkData, privateKey);
-        _webSocketService.sendFileChunk(
-            fileId: fileId,
-            chunkIndex: i,
-            chunkData: chunkData,
-            recipient: recipientUsername,
-            groupId: groupId,
-            totalChunks: metadata!.totalChunks,
-            checksum: chunks[i].checksum,
-            signature: signature);
-        _uploadProgress[fileId] = (i + 1) / chunks.length;
-        notifyListeners();
-        await Future.delayed(const Duration(milliseconds: 50));
-      }
-      await DBService.updateFileTransferStatus(fileId, FileStatus.completed);
-      _fileStatuses[fileId] = FileStatus.completed;
-    } catch (e) {
-      _setError('Failed to send file chunks: $e');
-      _fileStatuses[fileId] = FileStatus.failed;
-      await DBService.updateFileTransferStatus(fileId, FileStatus.failed);
-    } finally {
-      _activeTransfers.remove(fileId);
-    }
-    notifyListeners();
-  }
+  // (startSendingFileChunks, requestDownload... sẽ được thay bằng P2PService)
+  // ...
 
-  Future<void> requestDownload(String fileId) async {
-    // ... (Giữ nguyên)
-    try {
-      final metadata = await DBService.getFileTransfer(fileId);
-      if (metadata == null) throw Exception('Metadata not found');
-      if (metadata.groupId != null) {
-        await requestGroupFileDownload(fileId);
-        return;
-      }
-      final sender = await DBService.getUserById(metadata.senderId);
-      if (sender == null) throw Exception('Sender not found');
-      _setError(null);
-      _downloadProgress[fileId] = 0.0;
-      _fileStatuses[fileId] = FileStatus.transferring;
-      notifyListeners();
-      _webSocketService.requestFileDownload(fileId, sender.username);
-    } catch (e) {
-      _setError("Failed to start download: $e");
-      _fileStatuses[fileId] = FileStatus.failed;
-      notifyListeners();
-    }
-  }
-
-  Future<void> requestGroupFileDownload(String fileId) async {
-    // ... (Giữ nguyên)
-    try {
-      _setError(null);
-      _downloadProgress[fileId] = 0.0;
-      _fileStatuses[fileId] = FileStatus.transferring;
-      notifyListeners();
-
-      final manager = await startStreamingSession(fileId);
-      if (manager == null) throw Exception("Failed to start streaming manager");
-
-      for (int i = 0; i < manager.totalChunks; i++) {
-        manager.onChunkNeeded(i);
-        await Future.delayed(Duration(milliseconds: 10));
-      }
-      print(
-          "P2P Download: Requested all ${manager.totalChunks} chunks for $fileId.");
-    } catch (e) {
-      _setError("Failed to start P2P download: $e");
-      _fileStatuses[fileId] = FileStatus.failed;
-      notifyListeners();
-    }
-  }
-
+  // --- THAY ĐỔI: int -> String ---
   Future<void> receiveFileChunk(
       String fileId,
       int chunkIndex,
       Uint8List chunkData,
-      String senderUsername,
+      String senderPeerId, // Đã là String
       String? checksum,
       String? signature) async {
-    // ... (Giữ nguyên)
     await _dbLock.synchronized(() async {
-      print('🔒 [RECEIVER] Acquiring lock for chunk $chunkIndex of $fileId');
+      print('🔒 [RECEIVER] Nhận chunk $chunkIndex của $fileId');
       try {
-        final manager = _streamingManagers[fileId];
-        if (manager != null) manager.markChunkAsDownloaded(chunkIndex);
         if (checksum != null) {
           final receivedChecksum = sha256.convert(chunkData).toString();
           if (receivedChecksum != checksum)
             throw Exception('Checksum mismatch');
         }
+
+        // --- THAY ĐỔI: Xác thực chữ ký bằng P2P ---
         if (signature != null) {
-          final isValid = await Future(() => RSAService.verifySignature(
-              data: chunkData,
-              base64Signature: signature,
-              username: senderUsername));
-          if (!isValid) throw Exception('SIGNATURE INVALID');
+          // TODO: Cần có cơ chế lấy Public Key của Peer
+          // final sender = await DBService.getUserById(senderPeerId);
+          // if (sender?.publicKey == null) throw Exception('Không tìm thấy Public Key');
+          //
+          // final isValid = await Future(() => RSAService.verifySignature(
+          //     data: chunkData,
+          //     base64Signature: signature,
+          //     publicKeyPem: sender!.publicKey!)); // Dùng publicKey
+          // if (!isValid) throw Exception('SIGNATURE INVALID');
+          print("P2P: Xác thực chữ ký (chưa implement)");
         }
+        // --- KẾT THÚC THAY ĐỔI ---
+
         final chunkPath = await FileService.writeReceivedChunk(
             fileId, chunkIndex, chunkData,
-            senderUsername: senderUsername);
+            senderUsername: senderPeerId); // Dùng PeerId làm tên
         if (chunkPath != null) {
           final record = FileChunkData(
               fileId: fileId,
@@ -519,9 +311,6 @@ class FileTransferProvider with ChangeNotifier {
               await DBService.updateFileTransferStatus(
                   fileId, FileStatus.completed);
             }
-
-            _webSocketService.announceChunk(fileId, chunkIndex);
-            print('📣 [Announce] Broadcasting that I have chunk $chunkIndex.');
           }
         }
       } catch (e) {
@@ -539,7 +328,7 @@ class FileTransferProvider with ChangeNotifier {
   }
 
   Future<void> openFile(String fileId) async {
-    // ... (Giữ nguyên)
+    // (Giữ nguyên logic)
     try {
       _setError(null);
       final metadata = await DBService.getFileTransfer(fileId);
@@ -565,10 +354,10 @@ class FileTransferProvider with ChangeNotifier {
   }
 
   Future<void> deleteFile(String fileId) async {
-    // ... (Giữ nguyên)
+    // (Giữ nguyên)
     try {
-      _webSocketService.leaveFileRoom(fileId);
-      print('🚪 [P2P] Left file room: ${fileId}');
+      // TODO: Rời P2P room (nếu có)
+      // _webSocketService.leaveFileRoom(fileId);
       final metadata = await DBService.getFileTransfer(fileId);
       await DBService.deleteFileTransfer(fileId);
       if (metadata?.filePath != null &&
@@ -577,7 +366,6 @@ class FileTransferProvider with ChangeNotifier {
       }
       await FileService.deleteFileChunks(fileId, isIncoming: true);
       await FileService.deleteFileChunks(fileId, isIncoming: false);
-      _streamingManagers.remove(fileId);
       _activeTransfers.remove(fileId);
       _sentFiles.removeWhere((f) => f.id == fileId);
       _receivedFiles.removeWhere((f) => f.id == fileId);
@@ -591,15 +379,12 @@ class FileTransferProvider with ChangeNotifier {
   }
 
   void cancelFileTransfer(String fileId) async {
-    // ... (Giữ nguyên)
+    // (Giữ nguyên)
     try {
-      _webSocketService.leaveFileRoom(fileId);
-      print('🚪 [P2P] Left file room: ${fileId}');
       await DBService.updateFileTransferStatus(fileId, FileStatus.failed);
       _fileStatuses[fileId] = FileStatus.failed;
       _uploadProgress.remove(fileId);
       _downloadProgress.remove(fileId);
-      _streamingManagers.remove(fileId);
     } catch (e) {
       _setError('Failed to cancel transfer: $e');
     }
@@ -607,7 +392,6 @@ class FileTransferProvider with ChangeNotifier {
   }
 
   void _setLoading(bool loading) {
-    // ... (Giữ nguyên)
     if (_isLoading != loading) {
       _isLoading = loading;
       notifyListeners();
@@ -615,7 +399,6 @@ class FileTransferProvider with ChangeNotifier {
   }
 
   void _setError(String? error) {
-    // ... (Giữ nguyên)
     if (_error != error) {
       _error = error;
       notifyListeners();

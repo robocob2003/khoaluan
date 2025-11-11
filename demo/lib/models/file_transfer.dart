@@ -1,4 +1,4 @@
-// lib/models/file_transfer.dart
+// demo/lib/models/file_transfer.dart
 
 enum FileStatus { pending, transferring, completed, failed }
 
@@ -9,15 +9,15 @@ class FileMetadata {
   final String fileName;
   final int fileSize;
   final int totalChunks;
-  final int senderId;
-  final int? receiverId;
-  final int? groupId;
+  // --- THAY ĐỔI TỪ int -> String ---
+  final String senderId;
+  final String? receiverId;
+  final String? groupId;
+  // --- KẾT THÚC THAY ĐỔI ---
   final DateTime timestamp;
   final String? filePath;
   final FileStatus status;
   final String? mimeType;
-
-  // ---- THÊM TRƯỜNG MỚI (CHỈ DÙNG CHO UI) ----
   final List<String> tags;
 
   FileMetadata({
@@ -25,14 +25,14 @@ class FileMetadata {
     required this.fileName,
     required this.fileSize,
     required this.totalChunks,
-    required this.senderId,
-    this.receiverId,
-    this.groupId,
+    required this.senderId, // Đã là String
+    this.receiverId, // Đã là String?
+    this.groupId, // Đã là String?
     required this.timestamp,
     this.filePath,
     this.status = FileStatus.pending,
     this.mimeType,
-    this.tags = const [], // <-- Thêm
+    this.tags = const [],
   });
 
   Map<String, dynamic> toMap() {
@@ -41,14 +41,13 @@ class FileMetadata {
       'fileName': fileName,
       'fileSize': fileSize,
       'totalChunks': totalChunks,
-      'senderId': senderId,
-      'receiverId': receiverId,
-      'groupId': groupId,
+      'senderId': senderId, // Đã là String
+      'receiverId': receiverId, // Đã là String?
+      'groupId': groupId, // Đã là String?
       'timestamp': timestamp.toIso8601String(),
       'filePath': filePath,
       'status': status.toString(),
       'mimeType': mimeType,
-      // 'tags' không được lưu vào bảng này
     };
   }
 
@@ -58,14 +57,15 @@ class FileMetadata {
       fileName: map['fileName'] ?? '',
       fileSize: map['fileSize'] ?? 0,
       totalChunks: map['totalChunks'] ?? 0,
-      senderId: map['senderId'] ?? 0,
-      receiverId: map['receiverId'],
-      groupId: map['groupId'],
+      // --- THAY ĐỔI TỪ int -> String ---
+      senderId: map['senderId']?.toString() ?? '', // Chuyển đổi an toàn
+      receiverId: map['receiverId']?.toString(),
+      groupId: map['groupId']?.toString(),
+      // --- KẾT THÚC THAY ĐỔI ---
       timestamp: DateTime.tryParse(map['timestamp'] ?? '') ?? DateTime.now(),
       filePath: map['filePath'],
       status: _parseFileStatus(map['status']),
       mimeType: map['mimeType'],
-      // 'tags' sẽ được tải riêng
     );
   }
 
@@ -82,33 +82,33 @@ class FileMetadata {
     String? fileName,
     int? fileSize,
     int? totalChunks,
-    int? senderId,
-    int? receiverId,
-    int? groupId,
+    String? senderId, // Đã là String
+    String? receiverId, // Đã là String?
+    String? groupId, // Đã là String?
     DateTime? timestamp,
     String? filePath,
     FileStatus? status,
     String? mimeType,
-    List<String>? tags, // <-- Thêm
+    List<String>? tags,
   }) {
     return FileMetadata(
       id: id ?? this.id,
       fileName: fileName ?? this.fileName,
       fileSize: fileSize ?? this.fileSize,
       totalChunks: totalChunks ?? this.totalChunks,
-      senderId: senderId ?? this.senderId,
-      receiverId: receiverId ?? this.receiverId,
-      groupId: groupId ?? this.groupId,
+      senderId: senderId ?? this.senderId, // Đã là String
+      receiverId: receiverId ?? this.receiverId, // Đã là String?
+      groupId: groupId ?? this.groupId, // Đã là String?
       timestamp: timestamp ?? this.timestamp,
       filePath: filePath ?? this.filePath,
       status: status ?? this.status,
       mimeType: mimeType ?? this.mimeType,
-      tags: tags ?? this.tags, // <-- Thêm
+      tags: tags ?? this.tags,
     );
   }
 }
 
-// (FileChunkData giữ nguyên)
+// (FileChunkData giữ nguyên, nó đã dùng fileId là String)
 class FileChunkData {
   final int? id;
   final String fileId;

@@ -1,18 +1,14 @@
-// lib/models/group.dart
+// demo/lib/models/group.dart
 
-import 'package:flutter/foundation.dart'; // <-- DÒNG ĐÃ SỬA TỪ 'packagef'
-import '../models/user.dart'; // <-- Sửa đường dẫn tương đối
-
-// Đại diện cho bảng 'groups'
 class Group {
-  final int id;
+  // --- THAY ĐỔI: int -> String ---
+  final String id;
+  final String ownerId;
+  // --- KẾT THÚC THAY ĐỔI ---
   final String name;
   final String? description;
-  final int ownerId;
   final DateTime createdAt;
-  // Dùng cho UI, không có trong DB
   final List<GroupMember> members;
-  final int unreadCount;
 
   Group({
     required this.id,
@@ -21,7 +17,6 @@ class Group {
     required this.ownerId,
     required this.createdAt,
     this.members = const [],
-    this.unreadCount = 0,
   });
 
   Map<String, dynamic> toMap() {
@@ -36,22 +31,23 @@ class Group {
 
   factory Group.fromMap(Map<String, dynamic> map) {
     return Group(
-      id: map['id'],
+      // --- THAY ĐỔI: Chuyển đổi an toàn sang String ---
+      id: map['id']?.toString() ?? '',
+      ownerId: map['ownerId']?.toString() ?? '',
+      // --- KẾT THÚC THAY ĐỔI ---
       name: map['name'] ?? '',
       description: map['description'],
-      ownerId: map['ownerId'],
       createdAt: DateTime.tryParse(map['createdAt'] ?? '') ?? DateTime.now(),
     );
   }
 
   Group copyWith({
-    int? id,
+    String? id,
     String? name,
     String? description,
-    int? ownerId,
+    String? ownerId,
     DateTime? createdAt,
     List<GroupMember>? members,
-    int? unreadCount,
   }) {
     return Group(
       id: id ?? this.id,
@@ -60,17 +56,17 @@ class Group {
       ownerId: ownerId ?? this.ownerId,
       createdAt: createdAt ?? this.createdAt,
       members: members ?? this.members,
-      unreadCount: unreadCount ?? this.unreadCount,
     );
   }
 }
 
-// Đại diện cho một thành viên (kết quả join từ 'users' và 'group_members')
 class GroupMember {
-  final int id; // User ID
+  // --- THAY ĐỔI: int -> String ---
+  final String id;
+  // --- KẾT THÚC THAY ĐỔI ---
   final String username;
   final String? publicKey;
-  final String role; // 'admin' hoặc 'member'
+  final String role;
 
   GroupMember({
     required this.id,
@@ -81,20 +77,12 @@ class GroupMember {
 
   factory GroupMember.fromMap(Map<String, dynamic> map) {
     return GroupMember(
-      id: map['id'],
+      // --- THAY ĐỔI: Chuyển đổi an toàn sang String ---
+      id: map['id']?.toString() ?? '',
+      // --- KẾT THÚC THAY ĐỔI ---
       username: map['username'] ?? '',
       publicKey: map['publicKey'],
       role: map['role'] ?? 'member',
-    );
-  }
-
-  // Chuyển đổi một UserModel thành GroupMember (dùng khi tạo nhóm)
-  factory GroupMember.fromUser(UserModel user, String role) {
-    return GroupMember(
-      id: user.id!,
-      username: user.username,
-      publicKey: user.publicKey,
-      role: role,
     );
   }
 }

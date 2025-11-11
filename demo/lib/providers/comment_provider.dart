@@ -1,13 +1,12 @@
-// lib/providers/comment_provider.dart
+// demo/lib/providers/comment_provider.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/comment.dart';
-import '../models/user.dart';
 import '../services/db_service.dart';
-import 'auth_provider.dart';
+import '../services/identity_service.dart'; // THAY THẾ BẰNG IdentityService
 
 class CommentProvider with ChangeNotifier {
-  AuthProvider? _authProvider;
+  IdentityService? _identityService;
 
   // Key: fileId, Value: List of comments
   final Map<String, List<Comment>> _comments = {};
@@ -17,8 +16,9 @@ class CommentProvider with ChangeNotifier {
     return _comments[fileId] ?? [];
   }
 
-  void setAuthProvider(AuthProvider authProvider) {
-    _authProvider = authProvider;
+  // Dùng IdentityService thay cho AuthProvider
+  void setIdentityService(IdentityService identityService) {
+    _identityService = identityService;
   }
 
   /// Tải bình luận từ DB
@@ -28,7 +28,7 @@ class CommentProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  /// Nhận bình luận (từ DB hoặc WebSocket)
+  /// Nhận bình luận (từ DB hoặc WebSocket/P2P)
   void addComment(Comment comment) {
     final fileId = comment.fileId;
     if (!_comments.containsKey(fileId)) {
@@ -45,14 +45,16 @@ class CommentProvider with ChangeNotifier {
 
   /// Gửi bình luận mới
   Future<Comment?> createComment(String fileId, String content) async {
-    if (_authProvider?.user == null) return null;
+    if (_identityService?.myPeerId == null) return null;
 
-    final user = _authProvider!.user!;
+    final myPeerId = _identityService!.myPeerId!;
+    // Giả sử chúng ta muốn hiển thị một tên, có thể lấy 1 phần ID
+    final myName = 'Peer...${myPeerId.substring(myPeerId.length - 6)}';
 
     final comment = Comment(
       fileId: fileId,
-      senderId: user.id!,
-      senderUsername: user.username,
+      senderId: myPeerId, // Lỗi đã được SỬA (String -> String)
+      senderUsername: myName,
       content: content,
       timestamp: DateTime.now(),
     );
@@ -64,7 +66,7 @@ class CommentProvider with ChangeNotifier {
     // Cập nhật state
     addComment(savedComment);
 
-    // Trả về comment đã lưu để WebSocket gửi đi
+    // Trả về comment đã lưu để gửi đi (qua P2P hoặc server)
     return savedComment;
   }
 }

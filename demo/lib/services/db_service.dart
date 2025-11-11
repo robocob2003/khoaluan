@@ -1,4 +1,4 @@
-// lib/services/db_service.dart
+// demo/lib/services/db_service.dart
 
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
@@ -13,8 +13,10 @@ enum FriendshipStatus { pending, accepted, rejected }
 
 class DBService {
   static Database? _database;
-  static const String _dbName = 'flutter_chat_FINAL_V8.db';
-  static const int _dbVersion = 4;
+  // --- TĂNG PHIÊN BẢN DB ĐỂ BUỘC NÂNG CẤP ---
+  static const String _dbName = 'flutter_chat_P2P_V1.db'; // Đổi tên DB mới
+  static const int _dbVersion = 1; // Bắt đầu lại từ V1
+  // --- KẾT THÚC ---
 
   static Future<void> initialize() async {
     await database;
@@ -31,59 +33,41 @@ class DBService {
     return await openDatabase(
       path,
       version: _dbVersion,
-      onCreate: _onCreate,
-      onUpgrade: _onUpgrade,
+      onCreate: _onCreate, // Sẽ chạy _onCreate vì tên DB mới
+      // onUpgrade: _onUpgrade, // Không cần onUpgrade nếu tạo DB mới
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
       },
     );
   }
 
-  static Future<void> _onUpgrade(
-      Database db, int oldVersion, int newVersion) async {
-    print("Upgrading database from version $oldVersion to $newVersion...");
-    if (oldVersion < 2) {
-      try {
-        await _createCommentTable(db);
-      } catch (e) {
-        print("Could not create comment table: $e");
-      }
-    }
-    if (oldVersion < 3) {
-      try {
-        await _createTagTable(db);
-      } catch (e) {
-        print("Could not create tag table: $e");
-      }
-    }
-    if (oldVersion < 4) {
-      try {
-        await _createFriendshipTable(db);
-      } catch (e) {
-        print("Could not create friendship table: $e");
-      }
-    }
-  }
+  // --- HÀM NÀY BỊ LOẠI BỎ VÌ CHÚNG TA TẠO DB MỚI ---
+  // static Future<void> _onUpgrade(
+  //     Database db, int oldVersion, int newVersion) async { ... }
+  // --- KẾT THÚC ---
 
   static Future<void> _onCreate(Database db, int version) async {
-    print("--- CREATING NEW DATABASE (FINAL_V8) ---");
+    print("--- 💡 TẠO DATABASE P2P MỚI (V1) ---");
+    // --- THAY ĐỔI: id INTEGER -> id TEXT ---
     await db.execute('''
       CREATE TABLE users (
-        id INTEGER PRIMARY KEY, -- BỎ AUTOINCREMENT NẾU SERVER QUẢN LÝ ID
+        id TEXT PRIMARY KEY, 
         username TEXT UNIQUE NOT NULL,
-        email TEXT NOT NULL,
-        password TEXT NOT NULL,
+        email TEXT,
+        password TEXT,
         publicKey TEXT,
         privateKey TEXT
       )
     ''');
+
+    // --- THAY ĐỔI: ...Id INTEGER -> ...Id TEXT ---
     await db.execute('''
       CREATE TABLE messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         content TEXT NOT NULL,
-        senderId INTEGER NOT NULL,
-        receiverId INTEGER,
-        groupId INTEGER, 
+        senderId TEXT NOT NULL,
+        receiverId TEXT,
+        groupId TEXT, 
         timestamp TEXT NOT NULL,
         type TEXT NOT NULL,
         senderUsername TEXT,
@@ -93,21 +77,24 @@ class DBService {
         fileStatus TEXT 
       )
     ''');
+
+    // --- THAY ĐỔI: ...Id INTEGER -> ...Id TEXT ---
     await db.execute('''
       CREATE TABLE file_transfers (
         id TEXT PRIMARY KEY,
         fileName TEXT NOT NULL,
         fileSize INTEGER NOT NULL,
         totalChunks INTEGER NOT NULL,
-        senderId INTEGER NOT NULL,
-        receiverId INTEGER, 
-        groupId INTEGER, 
+        senderId TEXT NOT NULL,
+        receiverId TEXT, 
+        groupId TEXT, 
         timestamp TEXT NOT NULL,
         filePath TEXT,
         status TEXT NOT NULL,
         mimeType TEXT
       )
     ''');
+
     await db.execute('''
       CREATE TABLE file_chunks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -126,18 +113,16 @@ class DBService {
     await _createGroupTables(db);
     await _createCommentTable(db);
     await _createTagTable(db);
-
-    if (version >= 4) {
-      await _createFriendshipTable(db);
-    }
+    await _createFriendshipTable(db);
   }
 
   static Future<void> _createCommentTable(Database db) async {
+    // --- THAY ĐỔI: senderId INTEGER -> senderId TEXT ---
     await db.execute('''
       CREATE TABLE file_comments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         fileId TEXT NOT NULL,
-        senderId INTEGER NOT NULL,
+        senderId TEXT NOT NULL, 
         senderUsername TEXT NOT NULL,
         content TEXT NOT NULL,
         timestamp TEXT NOT NULL,
@@ -160,21 +145,24 @@ class DBService {
   }
 
   static Future<void> _createGroupTables(Database db) async {
+    // --- THAY ĐỔI: id INTEGER -> id TEXT, ownerId INTEGER -> ownerId TEXT ---
     await db.execute('''
       CREATE TABLE groups (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT PRIMARY KEY, 
         name TEXT NOT NULL,
         description TEXT,
-        ownerId INTEGER NOT NULL,
+        ownerId TEXT NOT NULL, 
         createdAt TEXT NOT NULL,
         FOREIGN KEY (ownerId) REFERENCES users (id) ON DELETE CASCADE
       )
     ''');
+
+    // --- THAY ĐỔI: groupId INTEGER -> groupId TEXT, userId INTEGER -> userId TEXT ---
     await db.execute('''
       CREATE TABLE group_members (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        groupId INTEGER NOT NULL,
-        userId INTEGER NOT NULL,
+        groupId TEXT NOT NULL, 
+        userId TEXT NOT NULL, 
         role TEXT NOT NULL DEFAULT 'member',
         joinedAt TEXT NOT NULL,
         FOREIGN KEY (groupId) REFERENCES groups (id) ON DELETE CASCADE,
@@ -185,13 +173,14 @@ class DBService {
   }
 
   static Future<void> _createFriendshipTable(Database db) async {
+    // --- THAY ĐỔI: ...Id INTEGER -> ...Id TEXT ---
     await db.execute('''
       CREATE TABLE friendships (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_one_id INTEGER NOT NULL,
-        user_two_id INTEGER NOT NULL,
+        user_one_id TEXT NOT NULL, 
+        user_two_id TEXT NOT NULL, 
         status TEXT NOT NULL, -- 'pending', 'accepted', 'rejected'
-        action_user_id INTEGER NOT NULL, -- Ai là người gửi yêu cầu?
+        action_user_id TEXT NOT NULL, 
         FOREIGN KEY (user_one_id) REFERENCES users (id) ON DELETE CASCADE,
         FOREIGN KEY (user_two_id) REFERENCES users (id) ON DELETE CASCADE,
         UNIQUE(user_one_id, user_two_id)
@@ -202,9 +191,8 @@ class DBService {
   // --- User Operations ---
   static Future<int> insertUser(UserModel user) async {
     final db = await database;
-    // ---- SỬA: Đảm bảo server ID được ưu tiên ----
-    // `user.toMap()` đã bao gồm ID, `ConflictAlgorithm.replace` sẽ ghi đè
-    // nếu ID đã tồn tại, hoặc chèn mới nếu ID chưa có.
+    // `user.toMap()` đã bao gồm ID (String),
+    // `ConflictAlgorithm.replace` sẽ ghi đè
     return await db.insert('users', user.toMap(),
         conflictAlgorithm: ConflictAlgorithm.replace);
   }
@@ -215,12 +203,11 @@ class DBService {
         .update('users', user.toMap(), where: 'id = ?', whereArgs: [user.id]);
   }
 
-  // ---- THÊM HÀM MỚI ----
-  static Future<void> deleteUser(int id) async {
+  // --- THAY ĐỔI: int id -> String id ---
+  static Future<void> deleteUser(String id) async {
     final db = await database;
     await db.delete('users', where: 'id = ?', whereArgs: [id]);
   }
-  // --------------------
 
   static Future<UserModel?> getUserByUsername(String username) async {
     final db = await database;
@@ -236,7 +223,8 @@ class DBService {
     return List.generate(maps.length, (i) => UserModel.fromMap(maps[i]));
   }
 
-  static Future<UserModel?> getUserById(int id) async {
+  // --- THAY ĐỔI: int id -> String id ---
+  static Future<UserModel?> getUserById(String id) async {
     final db = await database;
     final maps = await db.query(
       'users',
@@ -249,9 +237,6 @@ class DBService {
     }
     return null;
   }
-
-  // (Các hàm còn lại: Message, File, Group, Comment, Tag, Friendship... giữ nguyên)
-  // ... (Phần code dài này được giữ nguyên)
 
   // --- Message Operations ---
   static Future<int> insertMessage(Message message) async {
@@ -323,14 +308,16 @@ class DBService {
     return null;
   }
 
-  static Future<List<FileMetadata>> getSentFiles(int userId) async {
+  // --- THAY ĐỔI: int userId -> String userId ---
+  static Future<List<FileMetadata>> getSentFiles(String userId) async {
     final db = await database;
     final maps = await db.query('file_transfers',
         where: 'senderId = ?', whereArgs: [userId], orderBy: 'timestamp DESC');
     return List.generate(maps.length, (i) => FileMetadata.fromMap(maps[i]));
   }
 
-  static Future<List<FileMetadata>> getReceivedFiles(int userId) async {
+  // --- THAY ĐỔI: int userId -> String userId ---
+  static Future<List<FileMetadata>> getReceivedFiles(String userId) async {
     final db = await database;
     final maps = await db.query('file_transfers',
         where: 'receiverId = ?',
@@ -339,7 +326,8 @@ class DBService {
     return List.generate(maps.length, (i) => FileMetadata.fromMap(maps[i]));
   }
 
-  static Future<List<FileMetadata>> getFilesForGroup(int groupId) async {
+  // --- THAY ĐỔI: int groupId -> String groupId ---
+  static Future<List<FileMetadata>> getFilesForGroup(String groupId) async {
     final db = await database;
     final maps = await db.query('file_transfers',
         where: 'groupId = ?', whereArgs: [groupId], orderBy: 'timestamp DESC');
@@ -395,15 +383,19 @@ class DBService {
   }
 
   // --- Group Operations ---
+  // --- THAY ĐỔI: int ownerId -> String ownerId ---
   static Future<Group?> createGroup(
-      String name, String description, int ownerId) async {
+      String name, String description, String ownerId) async {
     final db = await database;
     Group? newGroup;
     await db.transaction((txn) async {
       final now = DateTime.now().toIso8601String();
-      final groupId = await txn.insert(
+      // ID của nhóm sẽ là UUID hoặc hash, do P2P tạo ra
+      final groupId = 'group_${DateTime.now().millisecondsSinceEpoch}';
+      await txn.insert(
         'groups',
         {
+          'id': groupId,
           'name': name,
           'description': description,
           'ownerId': ownerId,
@@ -434,19 +426,14 @@ class DBService {
     final db = await database;
     await db.insert(
       'groups',
-      {
-        'id': group.id,
-        'name': group.name,
-        'description': group.description,
-        'ownerId': group.ownerId,
-        'createdAt': group.createdAt.toIso8601String(),
-      },
+      group.toMap(), // Model 'group' đã phải được cập nhật
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 
+  // --- THAY ĐỔI: int -> String ---
   static Future<void> addUserToGroup(
-      int groupId, int userId, String role) async {
+      String groupId, String userId, String role) async {
     final db = await database;
     await db.insert(
       'group_members',
@@ -460,7 +447,8 @@ class DBService {
     );
   }
 
-  static Future<void> removeUserFromGroup(int groupId, int userId) async {
+  // --- THAY ĐỔI: int -> String ---
+  static Future<void> removeUserFromGroup(String groupId, String userId) async {
     final db = await database;
     await db.delete(
       'group_members',
@@ -469,7 +457,8 @@ class DBService {
     );
   }
 
-  static Future<List<Group>> getGroupsForUser(int userId) async {
+  // --- THAY ĐỔI: int userId -> String userId ---
+  static Future<List<Group>> getGroupsForUser(String userId) async {
     final db = await database;
     final maps = await db.rawQuery('''
       SELECT g.* FROM groups g
@@ -481,7 +470,8 @@ class DBService {
     return List.generate(maps.length, (i) => Group.fromMap(maps[i]));
   }
 
-  static Future<List<GroupMember>> getMembersInGroup(int groupId) async {
+  // --- THAY ĐỔI: int groupId -> String groupId ---
+  static Future<List<GroupMember>> getMembersInGroup(String groupId) async {
     final db = await database;
     final maps = await db.rawQuery('''
       SELECT u.id, u.username, u.publicKey, gm.role
@@ -519,7 +509,7 @@ class DBService {
       batch.insert(
         'file_tags',
         {'fileId': fileId, 'tag': tag.toLowerCase()},
-        conflictAlgorithm: ConflictAlgorithm.ignore, // Bỏ qua nếu đã tồn tại
+        conflictAlgorithm: ConflictAlgorithm.ignore,
       );
     }
     await batch.commit(noResult: true);
@@ -537,12 +527,13 @@ class DBService {
   }
 
   // --- Friendship Operations ---
-
+  // --- THAY ĐỔI: int -> String ---
   static Future<void> addFriendRequest(
-      int myId, int otherId, int actionUserId) async {
+      String myId, String otherId, String actionUserId) async {
     final db = await database;
-    final userOneId = myId < otherId ? myId : otherId;
-    final userTwoId = myId < otherId ? otherId : myId;
+    // So sánh chuỗi
+    final userOneId = myId.compareTo(otherId) < 0 ? myId : otherId;
+    final userTwoId = myId.compareTo(otherId) < 0 ? otherId : myId;
 
     await db.insert(
       'friendships',
@@ -556,11 +547,12 @@ class DBService {
     );
   }
 
+  // --- THAY ĐỔI: int -> String ---
   static Future<void> updateFriendshipStatus(
-      int myId, int otherId, FriendshipStatus status) async {
+      String myId, String otherId, FriendshipStatus status) async {
     final db = await database;
-    final userOneId = myId < otherId ? myId : otherId;
-    final userTwoId = myId < otherId ? otherId : myId;
+    final userOneId = myId.compareTo(otherId) < 0 ? myId : otherId;
+    final userTwoId = myId.compareTo(otherId) < 0 ? otherId : myId;
 
     await db.update(
       'friendships',
@@ -570,7 +562,8 @@ class DBService {
     );
   }
 
-  static Future<List<UserModel>> getFriends(int myId) async {
+  // --- THAY ĐỔI: int myId -> String myId ---
+  static Future<List<UserModel>> getFriends(String myId) async {
     final db = await database;
     final maps = await db.rawQuery('''
       SELECT u.* FROM users u
@@ -583,7 +576,8 @@ class DBService {
     return List.generate(maps.length, (i) => UserModel.fromMap(maps[i]));
   }
 
-  static Future<List<UserModel>> getPendingRequests(int myId) async {
+  // --- THAY ĐỔI: int myId -> String myId ---
+  static Future<List<UserModel>> getPendingRequests(String myId) async {
     final db = await database;
     final maps = await db.rawQuery('''
       SELECT u.* FROM users u
@@ -596,7 +590,8 @@ class DBService {
     return List.generate(maps.length, (i) => UserModel.fromMap(maps[i]));
   }
 
-  static Future<List<UserModel>> getSentRequests(int myId) async {
+  // --- THAY ĐỔI: int myId -> String myId ---
+  static Future<List<UserModel>> getSentRequests(String myId) async {
     final db = await database;
     final maps = await db.rawQuery('''
       SELECT u.* FROM users u
@@ -609,11 +604,12 @@ class DBService {
     return List.generate(maps.length, (i) => UserModel.fromMap(maps[i]));
   }
 
+  // --- THAY ĐỔI: int -> String ---
   static Future<Map<String, dynamic>?> getFriendshipStatus(
-      int myId, int otherId) async {
+      String myId, String otherId) async {
     final db = await database;
-    final userOneId = myId < otherId ? myId : otherId;
-    final userTwoId = myId < otherId ? otherId : myId;
+    final userOneId = myId.compareTo(otherId) < 0 ? myId : otherId;
+    final userTwoId = myId.compareTo(otherId) < 0 ? otherId : myId;
 
     final maps = await db.query(
       'friendships',

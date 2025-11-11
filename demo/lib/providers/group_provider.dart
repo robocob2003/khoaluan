@@ -1,130 +1,158 @@
 // lib/providers/group_provider.dart
-import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/group.dart';
 import '../models/message.dart';
 import '../models/user.dart';
 import '../services/db_service.dart';
+import '../services/identity_service.dart';
+import '../services/p2p_service.dart';
 import '../services/websocket_service.dart';
-import 'auth_provider.dart';
 
 class GroupProvider with ChangeNotifier {
-  AuthProvider? _authProvider;
-  WebSocketService? _webSocketService;
+  // --- THAY ĐỔI ---
+  IdentityService? _identityService;
+  WebSocketService? _webSocketService; // Dùng cho signaling
+  P2PService? _p2pService; // Dùng cho data
+  // --- KẾT THÚC THAY ĐỔI ---
 
   List<Group> _groups = [];
+  final Map<String, List<GroupMember>> _groupMembers = {};
+  final Map<String, List<Message>> _groupMessages = {};
+
   bool _isLoading = false;
+  String? _error;
 
-  // Key: groupId, Value: List of messages
-  final Map<int, List<Message>> _groupMessages = {};
-
-  // Key: groupId, Value: unread count
-  final Map<int, int> _unreadCounts = {};
-
-  // Getters
   List<Group> get groups => _groups;
+  List<GroupMember> getMembers(String groupId) => _groupMembers[groupId] ?? [];
+  List<Message> getMessages(String groupId) => _groupMessages[groupId] ?? [];
   bool get isLoading => _isLoading;
-  Map<int, int> get unreadCounts => _unreadCounts;
+  String? get error => _error;
 
-  List<Message> getMessagesForGroup(int groupId) {
-    return _groupMessages[groupId] ?? [];
+  // --- THAY ĐỔI: setAuthProvider -> setServices ---
+  void setServices(IdentityService identityService, WebSocketService wsService,
+      P2PService p2pService) {
+    _identityService = identityService;
+    _webSocketService = wsService;
+    _p2pService = p2pService;
+    _loadGroups();
   }
+  // --- KẾT THÚC THAY ĐỔI ---
 
-  // Được gọi từ main.dart
-  void setAuthProvider(AuthProvider authProvider) {
-    _authProvider = authProvider;
-    // Khi provider được cấp Auth, hãy tải các nhóm
-    if (_authProvider?.user != null) {
-      loadGroups();
-    }
-  }
-
-  // Được gọi từ main.dart
-  void setWebSocketService(WebSocketService ws) {
-    _webSocketService = ws;
-  }
-
-  /// Tải danh sách nhóm từ DB
-  Future<void> loadGroups() async {
-    if (_authProvider?.user?.id == null) return;
+  Future<void> _loadGroups() async {
+    final myId = _identityService?.myPeerId;
+    if (myId == null) return;
 
     _isLoading = true;
     notifyListeners();
-
-    _groups = await DBService.getGroupsForUser(_authProvider!.user!.id!);
-
-    // Tự động tham gia tất cả các phòng chat nhóm
-    if (_webSocketService != null) {
-      for (final group in _groups) {
-        _webSocketService!.joinGroupRoom(group.id);
-      }
-      print("GroupProvider: Đã tham gia ${_groups.length} phòng chat nhóm.");
+    try {
+      _groups = await DBService.getGroupsForUser(myId);
+    } catch (e) {
+      _error = "Failed to load groups: $e";
+      print(_error);
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
-
-    _isLoading = false;
-    notifyListeners();
   }
 
-  /// Tạo nhóm mới (sẽ được gọi từ UI)
-  Future<Group?> createGroup(String name, String description) async {
-    if (_authProvider?.user?.id == null) return null;
+  Future<void> loadGroupDetails(String groupId) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      final members = await DBService.getMembersInGroup(groupId);
+      _groupMembers[groupId] = members;
+      // TODO: Tải tin nhắn nhóm
+      // final messages = await DBService.getMessagesForGroup(groupId);
+      // _groupMessages[groupId] = messages;
+    } catch (e) {
+      _error = "Failed to load group details: $e";
+      print(_error);
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
 
-    final ownerId = _authProvider!.user!.id!;
-    final newGroup = await DBService.createGroup(name, description, ownerId);
+  Future<void> createGroup(String name, String description) async {
+    final myId = _identityService?.myPeerId;
+    if (myId == null) {
+      _error = "Bạn chưa đăng nhập";
+      notifyListeners();
+      return;
+    }
 
-    if (newGroup != null) {
-      _groups.insert(0, newGroup);
+    _isLoading = true;
+    notifyListeners();
+    try {
+      final newGroup = await DBService.createGroup(name, description, myId);
+      if (newGroup != null) {
+        _groups.insert(0, newGroup);
+        // TODO: Thông báo cho P2P/Server (nếu cần)
+        // _webSocketService.createGroup(newGroup);
+        print("P2P: Tạo nhóm (chưa implement)");
+      }
+    } catch (e) {
+      _error = "Failed to create group: $e";
+      print(_error);
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
 
-      // Tự động tham gia phòng của nhóm mới tạo
-      _webSocketService?.joinGroupRoom(newGroup.id);
-      print("GroupProvider: Đã tạo và tham gia phòng ${newGroup.id}.");
+  Future<void> inviteUserToGroup(String groupId, String peerId) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      await DBService.addUserToGroup(groupId, peerId, 'member');
+      // TODO: Gửi P2P/Signaling
+      // _webSocketService.inviteToGroup(groupId, peerId);
+      print("P2P: Mời vào nhóm (chưa implement)");
+      await loadGroupDetails(groupId);
+    } catch (e) {
+      _error = "Failed to invite user: $e";
+      print(_error);
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> sendGroupMessage(String groupId, String content) async {
+    final myId = _identityService?.myPeerId;
+    if (myId == null) return;
+
+    final myName = 'Peer...${myId.substring(myId.length - 6)}';
+
+    final message = Message(
+      content: content,
+      senderId: myId,
+      groupId: groupId,
+      timestamp: DateTime.now(),
+      senderUsername: myName,
+    );
+
+    try {
+      final msgId = await DBService.insertMessage(message);
+      final savedMsg = message; // TODO: Cập nhật message với ID
+
+      if (!_groupMessages.containsKey(groupId)) {
+        _groupMessages[groupId] = [];
+      }
+      _groupMessages[groupId]!.add(savedMsg);
+
+      // TODO: Gửi P2P
+      // _p2pService.broadcastToGroup(groupId, json.encode({'type': 'group_msg', ...savedMsg.toMap()}));
+      print("P2P: Gửi tin nhắn nhóm (chưa implement)");
 
       notifyListeners();
-      return newGroup;
+    } catch (e) {
+      _error = "Failed to send message: $e";
+      print(_error);
+      notifyListeners();
     }
-    return null;
   }
 
-  /// Được gọi 1 lần bởi WebSocketProvider khi tải toàn bộ lịch sử
-  void loadGroupMessages(List<Message> allMessages) {
-    _groupMessages.clear();
-    for (final msg in allMessages) {
-      if (msg.groupId != null) {
-        final int groupId = msg.groupId!;
-        if (!_groupMessages.containsKey(groupId)) {
-          _groupMessages[groupId] = [];
-        }
-        _groupMessages[groupId]!.add(msg);
-      }
-    }
-    // Sắp xếp tất cả các nhóm
-    _groupMessages.forEach((key, value) {
-      value.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-    });
-    print(
-        "GroupProvider: Đã phân loại tin nhắn cũ cho ${_groupMessages.length} nhóm.");
-    notifyListeners();
-  }
-
-  /// Được gọi khi có tin nhắn MỚI (real-time)
-  void handleIncomingGroupMessage(Message message) {
-    if (message.groupId == null) return;
-    final int groupId = message.groupId!;
-
-    if (!_groupMessages.containsKey(groupId)) {
-      _groupMessages[groupId] = [];
-    }
-
-    _groupMessages[groupId]!.add(message);
-    // Không cần sắp xếp lại toàn bộ list, chỉ cần thêm vào cuối
-
-    _unreadCounts[groupId] = (_unreadCounts[groupId] ?? 0) + 1;
-
-    notifyListeners();
-  }
-
-  /// Lấy thành viên của một nhóm (sẽ dùng ở bước sau)
-  Future<List<GroupMember>> getGroupMembers(int groupId) async {
-    return await DBService.getMembersInGroup(groupId);
-  }
+  // TODO: Thêm các hàm onGroupMessage, onUserJoined, v.v.
+  // để P2PService gọi
 }
