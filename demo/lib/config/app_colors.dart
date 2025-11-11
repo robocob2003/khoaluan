@@ -16,6 +16,8 @@ class AppColors {
   static const Color greenText = Color(0xFF0B3B2A);
   static const Color greenLight = Color(0xFFEAF6F1);
   static const Color greenLightBorder = Color(0xFFCFE8DE);
+  static const Color textFaded = Color(0xFF9E9E9E);
+  static const Color primaryFaded = Color(0xFFE3F2FD);
 
   // Gradient cho các nút chính
   static const LinearGradient primaryGradient = LinearGradient(
