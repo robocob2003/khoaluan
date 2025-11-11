@@ -1,0 +1,74 @@
+name: flutter_chat_app
+description: A cross-platform chat application built with Flutter
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management
+  provider: ^6.1.1
+  dotted_border: ^2.1.0
+
+  # Database
+  sqflite: ^2.3.0
+  sqflite_common_ffi: ^2.3.0+4
+  path: ^1.8.3
+  path_provider: ^2.1.1
+
+  # Network & WebSocket
+  http: ^1.1.0
+  web_socket_channel: ^3.0.3
+
+  # Utilities
+  crypto: ^3.0.3
+  intl: ^0.20.2
+  basic_utils: ^5.7.0
+  flutter_secure_storage: ^10.0.0-beta.4
+  
+  # Encryption
+  encrypt: ^5.0.1
+  pointycastle: ^3.7.3
+
+  # File picking (for file attachments)
+  file_picker: ^10.3.3
+  
+  # UI Icons
+  cupertino_icons: ^1.0.6
+
+  #open filex
+  open_filex: ^4.3.4 
+
+  video_player: ^2.8.1    
+  video_player_win: ^3.2.0   # Thư viện chính để phát video
+  shelf: ^1.4.1              # Để tạo máy chủ HTTP cục bộ
+  shelf_router: ^1.1.4       # Hỗ trợ định tuyến cho shelf
+  collection: ^1.18.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_webrtc: 1.2.0 #
+flutter:
+  uses-material-design: true
+
+  # Assets can be added here if needed
+  # assets:
+  #   - images/
+  #   - icons/
+
+  # Fonts can be configured here
+  # fonts:
+  #   - family: CustomFont
+  #     fonts:
+  #       - asset: fonts/CustomFont-Regular.ttf
+  #       - asset: fonts/CustomFont-Bold.ttf
+  #         weight: 700

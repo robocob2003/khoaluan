@@ -1,0 +1,16 @@
+[
+  {
+    "username": "Usera",
+    "email": "a@gmail.com",
+    "salt": "c0d6cf875457fa2ab6070828efe585c8",
+    "hashedPassword": "05c889b4cff9c4ddfb2a27ec08195ac3e0882c9419be1087760bc4fd884c6f41",
+    "publicKey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAhegbLxNLwjH0u9YDIitD\nmy9Mr0XBO0rxT/qyzCQX7g/ZgI+75OM56u+rJQybcz/aT9qGA4Rqva+xcXTEaRS3\nu4YEipn/ZelBpsznJRUwFfo0tMASD3LF4iE3Qaq5Tz2RdB6/LTGOvVoKD1tqd5af\nb1ukqFqAFk37EDdFD0lFQktkBYZdWq66u0K82RLRN0zUTMXNUwLQ6YS1zt9dgSr7\nXVoUDusStFpq/YodoWHxigP3MrUgbgnU25yTxJc31dNakXptofS308c2RWti8JYv\ntRdfSzxjEM6Vcx7xwkUzsZg0s0K+Nk0BGgQU+JZC4BOOE/iaWsrimGPPnui/Kirz\nNQIDAQAB\n-----END PUBLIC KEY-----"
+  },
+  {
+    "username": "userb",
+    "email": "b@gmail.com",
+    "salt": "d1a69862f066ab7741ebdc3f8103413f",
+    "hashedPassword": "9c1a61760b1b11235c7d8e76a2ead8f3945c500efe08d97d7f5d2a5c49f82509",
+    "publicKey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAgzghqNq0oHVuJZBaXH28\n7F/h5vQrsXO+HQ0uSxcAqPqThlNl0VzOIpTQRNFdpbUasT4hpnpz4LruFRkR8NK6\nfGEXJ+ZFJ3XykHbd8++TwjN0Vmn9rfDTyS8lAdE8UcCeyxXIEEwEtHpfBYOsLgDr\ntBRRdA7H8453IZs5NN5nmxw2AbqEjydJRBBhISkOHbQO1OSPVMJ0xrczwpZRyKHp\nz9tX/5KFie+NmqSV2hcyeyWMBlQ+4EgVgSD16ibvrFvdJii9QUsiY5MuIDlonVPF\nFZRe+dqx5slJhDmpwLNdtIjTdGE60qxfSxjW9LwNltVawhR02vKPXX7IVw7fms/Q\neQIDAQAB\n-----END PUBLIC KEY-----"
+  }
+]
