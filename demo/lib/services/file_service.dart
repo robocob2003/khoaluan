@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:crypto/crypto.dart';
 import '../models/file_transfer.dart';
+import '../utils/helpers.dart';
 
 class FileService {
   static const int _chunkSize = 250 * 1024;
