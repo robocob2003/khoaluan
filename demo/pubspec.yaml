@@ -1,4 +1,4 @@
-name: flutter_chat_app # Tên này là từ file gốc của bạn
+name: demo # Tên này là từ file gốc của bạn
 description: A cross-platform chat application built with Flutter
 
 publish_to: 'none'
