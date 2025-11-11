@@ -5,22 +5,22 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
-import 'package:pointycastle/export.dart';
+import 'package:pointycastle/export.dart'; // Sẽ cần cho RSAService
 import 'package:synchronized/synchronized.dart';
 import 'package:collection/collection.dart';
 
 // --- THAY ĐỔI IMPORT ---
-import '../services/identity_service.dart';
-import '../services/p2p_service.dart'; // Sẽ cần cho P2P
+import 'package:demo/services/identity_service.dart';
+import 'package:demo/services/p2p_service.dart';
 import '../models/file_transfer.dart';
 import '../models/message.dart';
 import '../models/user.dart';
 import '../services/db_service.dart';
 import '../services/file_service.dart';
-import '../services/rsa_service.dart'; // Sẽ cần sửa file RSA
-import '../services/websocket_service.dart';
-// import '../services/streaming_service.dart'; // P2P WebRTC sẽ lo
-// import 'auth_provider.dart'; // ĐÃ XÓA
+import '../services/rsa_service.dart'; // Giả sử file này đã được cập nhật
+import '../services/websocket_service.dart'; // Vẫn cần cho Signaling
+// import '../services/streaming_service.dart'; // ĐÃ BỊ XÓA (WebRTC thay thế)
+// import 'auth_provider.dart'; // ĐÃ BỊ XÓA
 // --- KẾT THÚC THAY ĐỔI ---
 
 class FileTransferProvider with ChangeNotifier {
@@ -31,7 +31,7 @@ class FileTransferProvider with ChangeNotifier {
   final List<FileMetadata> _receivedFiles = [];
 
   // --- THAY ĐỔI ---
-  late WebSocketService _webSocketService; // Vẫn cần cho Signaling
+  WebSocketService? _webSocketService; // Vẫn cần cho Signaling
   P2PService? _p2pService; // Dùng cho truyền P2P
   IdentityService? _identityService;
   // --- KẾT THÚC THAY ĐỔI ---
@@ -39,6 +39,7 @@ class FileTransferProvider with ChangeNotifier {
   final Set<String> _activeTransfers = {};
   final Lock _dbLock = Lock();
 
+  // (Các Map này vẫn hữu ích để theo dõi P2P)
   final Map<String, Map<String, Set<int>>> _chunkAvailabilityMap = {};
   final Map<String, List<String>> _fileTags = {};
   List<String> getTagsForFile(String fileId) => _fileTags[fileId] ?? [];
@@ -69,8 +70,17 @@ class FileTransferProvider with ChangeNotifier {
     _p2pService = p2pService;
 
     // TODO: Lắng nghe P2PService để nhận file/chunk
-    // _p2pService.onFileReceived = (senderId, metadata) { ... }
-    // _p2pService.onChunkReceived = (senderId, chunk) { ... }
+    // _p2pService.onMessageReceived = (senderId, data) {
+    //   if (data['type'] == 'file_meta') {
+    //     // Xử lý metadata
+    //     // processIncomingFileMetadata(FileMetadata.fromMap(data), senderId);
+    //   } else if (data['type'] == 'file_tags') {
+    //     // handleIncomingFileTags(data['fileId'], data['tags']);
+    //   }
+    // };
+    // _p2pService.onBinaryChunkReceived = (senderId, fileId, chunkIndex, chunkData) {
+    //    // receiveFileChunk(fileId, chunkIndex, chunkData, senderId, null, null);
+    // };
   }
   // --- KẾT THÚC CẬP NHẬT ---
 
@@ -92,7 +102,7 @@ class FileTransferProvider with ChangeNotifier {
     await DBService.addFileTags(fileId, tags);
     _fileTags[fileId] = tags;
     // TODO: Gửi P2P
-    // _p2pService.broadcastToGroup(groupId, {'type': 'file_tags', 'fileId': fileId, 'tags': tags});
+    // _p2pService?.broadcastToGroup(groupId, {'type': 'file_tags', 'fileId': fileId, 'tags': tags});
     print("P2P: Gửi file tags (chưa implement)");
     notifyListeners();
   }
@@ -155,7 +165,10 @@ class FileTransferProvider with ChangeNotifier {
 
   // --- THAY ĐỔI: int userId -> String userId ---
   Future<void> loadFileHistory(String userId) async {
-    if (userId.isEmpty) return;
+    if (userId.isEmpty) {
+      print("Warning: loadFileHistory được gọi với userId rỗng.");
+      return;
+    }
     _setLoading(true);
     try {
       final sent = await DBService.getSentFiles(userId);
@@ -198,7 +211,7 @@ class FileTransferProvider with ChangeNotifier {
 
       // GỬI P2P
       // TODO: Gửi metadata qua P2PService
-      // _p2pService.sendMessage(targetPeerId, json.encode({'type': 'file_meta', ...metadata.toMap()}));
+      // _p2pService?.sendMessage(targetPeerId, json.encode({'type': 'file_meta', ...metadata.toMap()}));
       print("P2P: Gửi file metadata (chưa implement)");
     } catch (e) {
       _setError('Failed to send file metadata: $e');
@@ -239,7 +252,7 @@ class FileTransferProvider with ChangeNotifier {
 
       // GỬI P2P (Broadcase cho nhóm)
       // TODO: Gửi metadata qua P2PService
-      // _p2pService.broadcastToGroup(groupId, json.encode({'type': 'file_meta', ...metadata.toMap()}));
+      // _p2pService?.broadcastToGroup(groupId, json.encode({'type': 'file_meta', ...metadata.toMap()}));
       print("P2P: Gửi file metadata nhóm (chưa implement)");
     } catch (e) {
       _setError('Failed to send file to group: $e');
@@ -271,10 +284,11 @@ class FileTransferProvider with ChangeNotifier {
 
         // --- THAY ĐỔI: Xác thực chữ ký bằng P2P ---
         if (signature != null) {
-          // TODO: Cần có cơ chế lấy Public Key của Peer
+          // TODO: Cần có cơ chế lấy Public Key của Peer (hiện tại RSAService cũ)
+          // Giả sử RSAService đã được cập nhật để dùng String ID
           // final sender = await DBService.getUserById(senderPeerId);
           // if (sender?.publicKey == null) throw Exception('Không tìm thấy Public Key');
-          //
+
           // final isValid = await Future(() => RSAService.verifySignature(
           //     data: chunkData,
           //     base64Signature: signature,
@@ -311,6 +325,9 @@ class FileTransferProvider with ChangeNotifier {
               await DBService.updateFileTransferStatus(
                   fileId, FileStatus.completed);
             }
+
+            // TODO: Thông báo cho P2P (nếu cần)
+            // _webSocketService.announceChunk(fileId, chunkIndex);
           }
         }
       } catch (e) {
@@ -354,10 +371,10 @@ class FileTransferProvider with ChangeNotifier {
   }
 
   Future<void> deleteFile(String fileId) async {
-    // (Giữ nguyên)
+    // (Giữ nguyên logic)
     try {
       // TODO: Rời P2P room (nếu có)
-      // _webSocketService.leaveFileRoom(fileId);
+      // _webSocketService?.leaveFileRoom(fileId);
       final metadata = await DBService.getFileTransfer(fileId);
       await DBService.deleteFileTransfer(fileId);
       if (metadata?.filePath != null &&
@@ -379,8 +396,9 @@ class FileTransferProvider with ChangeNotifier {
   }
 
   void cancelFileTransfer(String fileId) async {
-    // (Giữ nguyên)
+    // (Giữ nguyên logic)
     try {
+      // _webSocketService?.leaveFileRoom(fileId);
       await DBService.updateFileTransferStatus(fileId, FileStatus.failed);
       _fileStatuses[fileId] = FileStatus.failed;
       _uploadProgress.remove(fileId);
